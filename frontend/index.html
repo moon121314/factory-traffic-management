@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FTMS Dashboard</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; background: #121212; color: #e0e0e0; }
+  h1 { font-size: 1.5rem; margin-bottom: 5px; color: #fff; }
+  .subtitle { color: #888; margin-bottom: 20px; font-size: 0.9rem; }
+  .grid { display: grid; grid-template-columns: 1fr 2fr; gap: 20px; }
+  .card { border: 1px solid #333; border-radius: 8px; padding: 16px; background: #1e1e1e; margin-bottom: 20px; }
+  .card h2 { font-size: 1.1rem; margin-top: 0; color: #fff; border-bottom: 1px solid #333; padding-bottom: 8px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .lamp { display: inline-block; width: 20px; height: 20px; border-radius: 50%; margin-right: 5px; }
+  .RED { background: #e74c3c; box-shadow: 0 0 10px #e74c3c; }
+  .YELLOW { background: #f1c40f; box-shadow: 0 0 10px #f1c40f; }
+  .GREEN { background: #2ecc71; box-shadow: 0 0 10px #2ecc71; }
+  .UNKNOWN { background: #555; }
+  button { background: #3498db; color: white; border: 0; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+  button:hover { background: #2980b9; }
+  button.danger { background: #e74c3c; }
+  button.danger:hover { background: #c0392b; }
+  button.safe { background: #2ecc71; }
+  button.safe:hover { background: #27ae60; }
+  input, select { padding: 8px; background: #2c2c2c; color: #fff; border: 1px solid #444; border-radius: 4px; }
+  pre { background: #000; padding: 12px; border-radius: 4px; overflow: auto; max-height: 300px; font-size: 0.85rem; color: #a8a8a8; }
+  .list-item { padding: 8px; border-bottom: 1px solid #333; cursor: pointer; }
+  .list-item:hover { background: #2c2c2c; }
+  .list-item.active { background: #3498db; color: white; }
+  .badge { padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; background: #444; margin-left: 5px; }
+  
+  /* Visual Intersection Styles */
+  .intersection-box { text-align: center; margin: 20px 0; font-family: monospace; position: relative; background: #222; padding: 20px; border-radius: 8px; border: 1px solid #444; }
+  .intersection-row { display: flex; justify-content: center; align-items: center; gap: 20px; }
+  .intersection-col { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+</style>
+</head>
+<body>
+
+<h1>Factory Traffic Management System</h1>
+<div class="subtitle">Live Dashboard</div>
+
+<div class="grid">
+  <div>
+    <div class="card">
+      <h2>Junctions</h2>
+      <div class="row">
+        <input id="new-junction-name" placeholder="e.g. Gate-A" style="flex: 1;">
+        <button onclick="createJunction()">Create</button>
+      </div>
+      <div id="junctions-list" style="margin-top: 10px;"></div>
+    </div>
+
+    <div class="card">
+      <h2>Simulate Sensor Event</h2>
+      <div class="row">
+        <select id="ev-type">
+          <option value="VEHICLE_ARRIVED">Arrived</option>
+          <option value="VEHICLE_CLEARED">Cleared</option>
+        </select>
+        <select id="ev-direction">
+          <option value="NORTH">North</option>
+          <option value="SOUTH">South</option>
+          <option value="EAST">East</option>
+          <option value="WEST">West</option>
+        </select>
+      </div>
+      <div class="row">
+        <select id="ev-vtype">
+          <option value="TRUCK">Truck</option>
+          <option value="FORKLIFT">Forklift</option>
+          <option value="EMPLOYEE_VEHICLE">Employee</option>
+          <option value="EMERGENCY">Emergency</option>
+        </select>
+        <button onclick="sendEvent()" style="flex: 1;">Send Event</button>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2>Live Status: <span id="status-name" style="color: #3498db;">(select a junction)</span></h2>
+      <div id="status-content" style="display: none;">
+        <p><strong>State:</strong> <span id="st-logical" class="badge"></span> <strong>Mode:</strong> <span id="st-mode" class="badge"></span></p>
+        
+        <!-- VISUAL INTERSECTION -->
+        <div class="intersection-box">
+          <div class="intersection-row">
+            <div>WEST <span class="lamp" id="v-w"></span></div>
+            <div style="color: #666;">-------+-------</div>
+            <div><span class="lamp" id="v-e"></span> EAST</div>
+          </div>
+          <div class="intersection-col" style="margin: 15px 0;">
+            <div>NORTH <span class="lamp" id="v-n"></span></div>
+            <div style="color: #666; height: 20px; border-left: 2px solid #666;"></div>
+            <div>SOUTH <span class="lamp" id="v-s"></span></div>
+          </div>
+        </div>
+        <!-- END VISUAL INTERSECTION -->
+
+        <h3 style="font-size: 1rem; margin-bottom: 5px;">Signals (Desired | Confirmed)</h3>
+        <div id="st-signals" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;"></div>
+
+        <h3 style="font-size: 1rem; margin-bottom: 5px;">Queues</h3>
+        <ul id="st-queues" style="margin-top: 0; padding-left: 20px;"></ul>
+
+        <h3 style="font-size: 1rem; margin-top: 15px; margin-bottom: 5px;">Operator Controls</h3>
+        <div class="row">
+          <select id="cmd-phase">
+            <option value="NS">NS (North/South)</option>
+            <option value="EW">EW (East/West)</option>
+          </select>
+          <button onclick="sendCommand('MANUAL_GREEN_REQUEST')">Manual Green</button>
+          <button onclick="sendCommand('EMERGENCY_REQUEST')" class="danger">Emergency</button>
+          <button onclick="sendCommand('RETURN_TO_AUTOMATIC')" class="safe">Return Auto</button>
+        </div>
+      </div>
+      <div id="status-empty" style="color: #888;">Select a junction from the left panel.</div>
+    </div>
+
+    <div class="card">
+      <h2>Audit History</h2>
+      <pre id="history">(select a junction)</pre>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "http://localhost:8000";
+let selectedJunction = null;
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    headers: { "Content-Type": "application/json" },
+    ...opts,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err || res.statusText);
+  }
+  return res.json();
+}
+
+async function loadJunctions() {
+  try {
+    const list = await api("/api/junctions");
+    const container = document.getElementById("junctions-list");
+    container.innerHTML = "";
+    if (list.length === 0) {
+      container.innerHTML = "<div style='color:#888;'>No junctions yet.</div>";
+      return;
+    }
+    list.forEach(j => {
+      const div = document.createElement("div");
+      div.className = "list-item" + (selectedJunction && selectedJunction.id === j.id ? " active" : "");
+      div.innerHTML = `<strong>${j.name}</strong> <br><small>${j.id}</small>`;
+      div.onclick = () => selectJunction(j);
+      container.appendChild(div);
+    });
+  } catch (e) { console.error("Failed to load junctions", e); }
+}
+
+async function createJunction() {
+  const name = document.getElementById("new-junction-name").value.trim();
+  if (!name) return alert("Enter a name");
+  try {
+    await api("/api/junctions", { method: "POST", body: JSON.stringify({ name }) });
+    document.getElementById("new-junction-name").value = "";
+    await loadJunctions();
+  } catch (e) { alert("Error: " + e.message); }
+}
+
+function selectJunction(j) {
+  selectedJunction = j;
+  document.getElementById("status-name").textContent = j.name;
+  document.getElementById("status-content").style.display = "block";
+  document.getElementById("status-empty").style.display = "none";
+  loadJunctions();
+  refreshStatus();
+  refreshHistory();
+}
+
+async function refreshStatus() {
+  if (!selectedJunction) return;
+  try {
+    const st = await api(`/api/junctions/${selectedJunction.id}/status`);
+    
+    document.getElementById("st-logical").textContent = st.logical_state;
+    document.getElementById("st-mode").textContent = st.mode;
+
+    const signalsDiv = document.getElementById("st-signals");
+    signalsDiv.innerHTML = st.signals.map(sig => `
+      <div style="background:#2c2c2c; padding:8px; border-radius:4px;">
+        <strong>${sig.direction}</strong><br>
+        <span class="lamp ${sig.desired}"></span> Desired: ${sig.desired}<br>
+        <span class="lamp ${sig.confirmed}"></span> Confirmed: ${sig.confirmed}
+      </div>
+    `).join("");
+
+    const queuesUl = document.getElementById("st-queues");
+    if (st.queues.length === 0) {
+      queuesUl.innerHTML = "<li>(empty)</li>";
+    } else {
+      queuesUl.innerHTML = st.queues.map(q => `<li>${q.direction} ${q.vehicle_type}: <strong>${q.count}</strong></li>`).join("");
+    }
+
+    // Update Visual Intersection
+    st.signals.forEach(sig => {
+      const dirMap = { 'NORTH': 'n', 'SOUTH': 's', 'EAST': 'e', 'WEST': 'w' };
+      const el = document.getElementById(`v-${dirMap[sig.direction]}`);
+      if (el) el.className = `lamp ${sig.confirmed}`;
+    });
+
+  } catch (e) { console.error("Status error", e); }
+}
+
+async function refreshHistory() {
+  if (!selectedJunction) return;
+  try {
+    const hist = await api(`/api/junctions/${selectedJunction.id}/history`);
+    const pre = document.getElementById("history");
+    if (hist.length === 0) {
+      pre.textContent = "(no history yet)";
+      return;
+    }
+    pre.textContent = hist.slice(-40).map(e => {
+      const time = new Date(e.at).toLocaleTimeString();
+      return `[${time}] ${e.kind.padEnd(18)} ${JSON.stringify(e.payload)}`;
+    }).join("\n");
+    pre.scrollTop = pre.scrollHeight;
+  } catch (e) { console.error("History error", e); }
+}
+
+async function sendCommand(type) {
+  if (!selectedJunction) return alert("Select a junction first.");
+  const phase = document.getElementById("cmd-phase").value;
+  const body = { command_type: type };
+  if (type !== "RETURN_TO_AUTOMATIC") body.phase = phase;
+  try {
+    const res = await api(`/api/junctions/${selectedJunction.id}/commands`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    alert(`Command ${type} result: ${res.status}\n${res.detail}`);
+    refreshStatus();
+  } catch (e) { alert("Command rejected: " + e.message); }
+}
+
+async function sendEvent() {
+  if (!selectedJunction) return alert("Select a junction first.");
+  const event_type = document.getElementById("ev-type").value;
+  const direction = document.getElementById("ev-direction").value;
+  const vehicle_type = document.getElementById("ev-vtype").value;
+  const event_id = "evt-" + Date.now() + "-" + Math.floor(Math.random()*1000);
+
+  try {
+    const res = await api("/api/sensor-events", {
+      method: "POST",
+      body: JSON.stringify({ event_id, junction_id: selectedJunction.id, event_type, direction, vehicle_type }),
+    });
+    console.log("Event result:", res);
+    refreshStatus();
+  } catch (e) { alert("Event error: " + e.message); }
+}
+
+loadJunctions();
+setInterval(() => { loadJunctions(); if (selectedJunction) refreshStatus(); }, 2000);
+setInterval(() => { if (selectedJunction) refreshHistory(); }, 4000);
+</script>
+</body>
+</html>
